@@ -1,3 +1,5 @@
+const { off } = require("process");
+
 /**
  * 正则常量
  */
@@ -35,7 +37,7 @@ class Mode {
 /**
  * 工具类
  */
-class Util {
+class Utils {
   static CODEWORDS_COUNT = [
     0, // Not used
     26, 44, 70, 100, 134, 172, 196, 242, 292, 346,
@@ -43,6 +45,9 @@ class Util {
     1156, 1258, 1364, 1474, 1588, 1706, 1828, 1921, 2051, 2185,
     2323, 2465, 2611, 2761, 2876, 3034, 3196, 3362, 3532, 3706
   ];
+  static getSymbolTotalCodewords(version) {
+    return Utils.CODEWORDS_COUNT[version];
+  }
   static getSegments(regex, mode, str) {
     let segments = [];
     let result = null;
@@ -57,17 +62,14 @@ class Util {
     return segments;
   }
   static splitString(str) {
-    let nSegs = Util.getSegments(NumericRegex, Mode.NUMERIC, str);
-    let aSegs = Util.getSegments(AlphanumerRegex, Mode.ALPHANUMERIC, str);
-    let bSegs = Util.getSegments(ByteRegex, Mode.BYTE, str);
+    let nSegs = Utils.getSegments(NumericRegex, Mode.NUMERIC, str);
+    let aSegs = Utils.getSegments(AlphanumerRegex, Mode.ALPHANUMERIC, str);
+    let bSegs = Utils.getSegments(ByteRegex, Mode.BYTE, str);
     return [...nSegs, ...aSegs, ...bSegs].sort((a, b) => a.index - b.index).map((o) => ({
       data: o.data,
       mode: o.mode,
       length: o.length,
     }));
-  }
-  static getSymbolTotalCodewords(version) {
-    return Util.CODEWORDS_COUNT[version];
   }
   static BufferFrom(string, encoding = 'utf8') {
     if (typeof window === 'object') {
@@ -82,12 +84,25 @@ class Util {
       ? Buffer.from(string, encoding)
       : new Buffer(string, encoding);
   }
+  static BufferAlloc(size, fill, encoding) {
+    if (Buffer.alloc) {
+      return Buffer.alloc(size, fill, encoding);
+    }
+    throw new Error('待实现');
+  }
 }
-// Brower环境下需要自己实现Buffer
+
+/**
+ * Brower环境下需要自己实现Buffer
+ */
 class _Buffer {
 }
 
-// codewords的buffer
+/**
+ * codewords的buffer
+ * @constructor buffer 以二进制排列的元数据 数值毫无意义
+ * @constructor length bit数而非数组长度
+ */
 class BitBuffer {
   constructor() {
     this.buffer = [];
@@ -98,7 +113,7 @@ class BitBuffer {
     return ((this.buffer[bufIndex] >>> (7 - index % 8)) & 1) === 1;
   }
   /**
-   * 将指定字符以指定长度加入buffer
+   * 将指定字符加入buffer
    * @param {Number} num 字符的值
    * @param {Number} length 位数
    */
@@ -119,7 +134,15 @@ class BitBuffer {
     if (this.buffer.length <= bufIndex) {
       this.buffer.push(0);
     }
-
+    /**
+     * @example 类型为BYTE
+     * value => 1 << 2 => 4
+     * length => 4
+     * 在put阶段依次传入的是false,true,false,false(0100)
+     * 进行位运算时 由于基数是0x80(0b10000000) 第二次进入位运算
+     * buffer[0] |= (0x80 >>> 1)
+     * 最终结果为64 => 0100(实际数值)0000(补位值)
+     */
     if (bit) {
       this.buffer[bufIndex] |= (0x80 >>> (this.length % 8));
     }
@@ -138,6 +161,63 @@ class ECLevel {
 }
 
 class ECCode {
+  static EC_BLOCKS_TABLE = [
+    // L  M  Q  H
+    1, 1, 1, 1,
+    1, 1, 1, 1,
+    1, 1, 2, 2,
+    1, 2, 2, 4,
+    1, 2, 4, 4,
+    2, 4, 4, 4,
+    2, 4, 6, 5,
+    2, 4, 6, 6,
+    2, 5, 8, 8,
+    4, 5, 8, 8,
+    4, 5, 8, 11,
+    4, 8, 10, 11,
+    4, 9, 12, 16,
+    4, 9, 16, 16,
+    6, 10, 12, 18,
+    6, 10, 17, 16,
+    6, 11, 16, 19,
+    6, 13, 18, 21,
+    7, 14, 21, 25,
+    8, 16, 20, 25,
+    8, 17, 23, 25,
+    9, 17, 23, 34,
+    9, 18, 25, 30,
+    10, 20, 27, 32,
+    12, 21, 29, 35,
+    12, 23, 34, 37,
+    12, 25, 34, 40,
+    13, 26, 35, 42,
+    14, 28, 38, 45,
+    15, 29, 40, 48,
+    16, 31, 43, 51,
+    17, 33, 45, 54,
+    18, 35, 48, 57,
+    19, 37, 51, 60,
+    19, 38, 53, 63,
+    20, 40, 56, 66,
+    21, 43, 59, 70,
+    22, 45, 62, 74,
+    24, 47, 65, 77,
+    25, 49, 68, 81
+  ];
+  static getBlocksCount(version, errorCorrectionLevel) {
+    switch (errorCorrectionLevel) {
+      case ECLevel.L:
+        return ECCode.EC_BLOCKS_TABLE[(version - 1) * 4 + 0]
+      case ECLevel.M:
+        return ECCode.EC_BLOCKS_TABLE[(version - 1) * 4 + 1]
+      case ECLevel.Q:
+        return ECCode.EC_BLOCKS_TABLE[(version - 1) * 4 + 2]
+      case ECLevel.H:
+        return ECCode.EC_BLOCKS_TABLE[(version - 1) * 4 + 3]
+      default:
+        return undefined
+    }
+  }
   static EC_CODEWORDS_TABLE = [
     // L  M  Q  H
     7, 10, 13, 17,
@@ -299,7 +379,7 @@ class AlphanumericData extends Data {
 
 class ByteData extends Data {
   constructor(data) {
-    super(Util.BufferFrom(data));
+    super(Utils.BufferFrom(data));
     this.mode = Mode.BYTE;
   }
   /**
@@ -341,7 +421,7 @@ class Version {
   static getCapacity(version, errorCorrectionLevel, mode) {
     if (!mode) mode = Mode.BYTE;
     // 获取对应version的codewords总数
-    let totalCodewords = Util.getSymbolTotalCodewords(version);
+    let totalCodewords = Utils.getSymbolTotalCodewords(version);
     // 获取error correction codewords总数
     let ecTotalCodewords = ECCode.getTotalCodewordsCount(version, errorCorrectionLevel);
     // 获取data codewords的bit数
@@ -409,7 +489,7 @@ class Version {
 class Segments {
   constructor(data) {
     this.data = data;
-    this.segs = Util.splitString(data);
+    this.segs = Utils.splitString(data);
   }
   // 生成单个类型的分片
   buildSingleSegment(data, mode) {
@@ -627,25 +707,106 @@ class Segments {
   }
 }
 
+class ReedSolomonEncoder { }
+
 /**
  * 主类
  */
 class QRcode {
-  // 返回codewords
+  // 使用Reed-Solomon编码字符
+  static createCodewords(bitBuffer, version, errorCorrectionLevel) {
+    // 又来一次
+    let totalCodewords = Utils.getSymbolTotalCodewords(version);
+    let ecTotalCodewords = ECCode.getTotalCodewordsCount(version, errorCorrectionLevel);
+    let dataTotalCodewords = totalCodewords - ecTotalCodewords;
+
+    // 计算block数
+    let ecTotalBlocks = ECCode.getBlocksCount(version, errorCorrectionLevel);
+
+    // 计算每个group包含block的数
+    let blocksInGroup2 = totalCodewords % ecTotalBlocks;
+    let blocksInGroup1 = ecTotalBlocks - blocksInGroup2;
+
+    let totalCodewordsInGroup1 = Math.floor(totalCodewords / ecTotalBlocks);
+
+    let dataCodewordsInGroup1 = Math.floor(dataTotalCodewords / ecTotalBlocks);
+    let dataCodewordsInGroup2 = dataCodewordsInGroup1 + 1;
+
+    let ecCount = totalCodewordsInGroup1 - dataCodewordsInGroup1;
+
+    let rs = new ReedSolomonEncoder(ecCount);
+
+    let offset = 0;
+    let dcData = new Array(ecTotalBlocks);
+    let ecData = new Array(ecTotalBlocks);
+    let maxDataSize = 0;
+    let buffer = Utils.BufferFrom(bitBuffer.buffer);
+
+    // 将buffer分派到不同的block中
+    for (let b = 0; b < ecTotalBlocks; b++) {
+      let dataSize = b < blocksInGroup1 ? dataCodewordsInGroup1 : dataCodewordsInGroup2;
+      dcData[b] = buffer.slice(offset, offset + dataSize);
+      ecData[b] = rs.encode(dcData[b]);
+
+      offset += dataSize;
+      maxDataSize = Math.max(maxDataSize, dataSize);
+    }
+
+    // 将data和error correction交错
+    let data = Utils.BufferAlloc(totalCodewords);
+    let index = 0;
+    for (let i = 0; i < maxDataSize; i++) {
+      for (let j = 0; j < ecTotalBlocks; j++) {
+        if (i < dcData[r].length) {
+          data[index++] = dcData[r][i];
+        }
+      }
+    }
+
+    for (let i = 0; i < ecCount; i++) {
+      for (let j = 0; j < ecTotalBlocks; j++) {
+        data[index++] = ecData[r][i];
+      }
+    }
+
+    return data;
+  }
+  // 将数据整合到一个buffer数组中
   static createData(version, errorCorrectionLevel, segments) {
     let buffer = new BitBuffer();
     segments.forEach((data) => {
-      // 4bit存类型 => Numeric,Alphanumeric,Byte,Kanji
+      // 4bit存类型
       buffer.put(data.mode.bit, 4);
 
-      // 根据ccbit存长度
+      // 根据mode和version存数据长度数值
       buffer.put(data.getLength(), Mode.getCharCountIndicator(data.mode, version));
 
       // 数据本身
       data.write(buffer);
     });
 
-    // return createCodewords(buffer, version, errorCorrectionLevel);
+    // 这里的计算跟getCapacity一样
+    let totalCodewords = Utils.getSymbolTotalCodewords(version);
+    let ecTotalCodewords = ECCode.getTotalCodewordsCount(version, errorCorrectionLevel);
+    let dataTotalCodewordsBits = (totalCodewords - ecTotalCodewords) * 8;
+
+    // 数据长度+4小于给定长度时 加一个结束标记
+    if (buffer.getLengthInBits() + 4 <= dataTotalCodewordsBits) {
+      buffer.put(0, 4);
+    }
+
+    // bit长度非8的倍数时 填充0
+    while (buffer.getLengthInBits() % 8 !== 0) {
+      buffer.putBit(0);
+    }
+
+    // 保证数据长度与给定的容量匹配
+    let n = (dataTotalCodewordsBits - buffer.getLengthInBits()) / 8;
+    for (let i = 0; i < n; i++) {
+      buffer.put(i % 2 ? 0x11 : 0xc, 8);
+    }
+
+    return QRcode.createCodewords(buffer, version, errorCorrectionLevel);
   }
   static createSymbol(data, errorCorrectionLevel) {
     let segments = null;
