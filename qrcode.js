@@ -97,6 +97,11 @@ class BitBuffer {
     let bufIndex = Math.floor(index / 8);
     return ((this.buffer[bufIndex] >>> (7 - index % 8)) & 1) === 1;
   }
+  /**
+   * 将指定字符以指定长度加入buffer
+   * @param {Number} num 字符的值
+   * @param {Number} length 位数
+   */
   put(num, length) {
     for (let i = 0; i < length; i++) {
       this.putBit(((num >>> (length - i - 1)) & 1) === 1);
@@ -105,7 +110,11 @@ class BitBuffer {
   getLengthInBits() {
     return this.length;
   }
-  putBits(bit) {
+  /**
+   * 这方法真是个憨憨
+   * @param {Boolean} bit
+   */
+  putBit(bit) {
     let bufIndex = Math.floor(this.length / 8);
     if (this.buffer.length <= bufIndex) {
       this.buffer.push(0);
@@ -340,7 +349,17 @@ class Version {
     // 混合模式下 直接返回version与errorCorrectionLevel映射的容量大小
     if (mode === Mode.MIXED) return dataTotalCodewordsBits;
 
-    // ...
+    let usableBits = dataTotalCodewordsBits - Version.getReservedBitsCount(mode, version);
+
+    switch (mode) {
+      case Mode.NUMERIC:
+        return Math.floor((usableBits / 10) * 3);
+      case Mode.ALPHANUMERIC:
+        return Math.floor((usableBits / 11) * 2);
+      case Mode.BYTE:
+      default:
+        return Math.floor(usableBits / 8);
+    }
   }
   // 多数据的version选择 取值范围为1-40
   static getBestVersionForMixedData(segments, errorCorrectionLevel) {
@@ -615,13 +634,12 @@ class QRcode {
   // 返回codewords
   static createData(version, errorCorrectionLevel, segments) {
     let buffer = new BitBuffer();
-
     segments.forEach((data) => {
       // 4bit存类型 => Numeric,Alphanumeric,Byte,Kanji
       buffer.put(data.mode.bit, 4);
 
       // 根据ccbit存长度
-      buffer.push(data.getLength(), Mode.getCharCountIndicator(data.mode, version));
+      buffer.put(data.getLength(), Mode.getCharCountIndicator(data.mode, version));
 
       // 数据本身
       data.write(buffer);
