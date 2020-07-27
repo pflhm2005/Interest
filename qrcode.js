@@ -69,13 +69,52 @@ class Util {
   static getSymbolTotalCodewords(version) {
     return Util.CODEWORDS_COUNT[version];
   }
-  static BufferFrom(value, encoding = 'utf8') {
+  static BufferFrom(string, encoding = 'utf8') {
+    if (typeof window === 'object') {
+      return new _Buffer(string, encoding);
+    }
     const isModern = (
       typeof Buffer.alloc === 'function' &&
       typeof Buffer.allocUnsafe === 'function' &&
       typeof Buffer.from === 'function'
     );
-    
+    return isModern
+      ? Buffer.from(string, encoding)
+      : new Buffer(string, encoding);
+  }
+}
+// Brower环境下需要自己实现Buffer
+class _Buffer {
+}
+
+// codewords的buffer
+class BitBuffer {
+  constructor() {
+    this.buffer = [];
+    this.length = 0;
+  }
+  get(index) {
+    let bufIndex = Math.floor(index / 8);
+    return ((this.buffer[bufIndex] >>> (7 - index % 8)) & 1) === 1;
+  }
+  put(num, length) {
+    for (let i = 0; i < length; i++) {
+      this.putBit(((num >>> (length - i - 1)) & 1) === 1);
+    }
+  }
+  getLengthInBits() {
+    return this.length;
+  }
+  putBits(bit) {
+    let bufIndex = Math.floor(this.length / 8);
+    if (this.buffer.length <= bufIndex) {
+      this.buffer.push(0);
+    }
+
+    if (bit) {
+      this.buffer[bufIndex] |= (0x80 >>> (this.length % 8));
+    }
+    this.length++
   }
 }
 
@@ -185,17 +224,33 @@ class NumericData extends Data {
     return 10 * Math.floor(len / 3) + ((len % 3) ? ((len % 3) * 3 + 1) : 0);
   }
   write(bitBuffer) {
+    let i = 0;
+    let group = [];
+    let value = 0;
+    for (; i + 3 <= this.data.length; i += 3) {
+      group = this.data.substr(i, 3);
+      value = parseInt(group, 10);
 
+      bitBuffer.put(value, 10);
+    }
+
+    let n = this.data.length - i;
+    if (n > 0) {
+      group = this.data.substr(i);
+      value = parseInt(group, 10);
+
+      bitBuffer.put(value, n * 3 + 1);
+    }
   }
 }
-const ALPHA_NUM_CHARS = [
-  '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-  'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-  'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-  ' ', '$', '%', '*', '+', '-', '.', '/', ':'
-];
 
 class AlphanumericData extends Data {
+  static ALPHA_NUM_CHARS = [
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+    ' ', '$', '%', '*', '+', '-', '.', '/', ':'
+  ];
   constructor(data) {
     super(data);
     this.mode = Mode.ALPHANUMERIC;
@@ -212,7 +267,24 @@ class AlphanumericData extends Data {
     return 11 * Math.floor(len / 2) + 6 * (len % 2);
   }
   write(bitBuffer) {
+    let i = 0;
+    for (; i + 2 <= this.data.length; i += 2) {
+      /**
+       * 这里组合是第一个字符的索引乘以45拼上第二个字符索引
+       * 例如AB => 10 * 45 + 11 = 461
+       * 双字符11bit
+       */
+      let value = AlphanumericData.ALPHA_NUM_CHARS.indexOf(this.data[i]) * 45;
 
+      value += AlphanumericData.ALPHA_NUM_CHARS.indexOf(this.data[i + 1]);
+
+      bitBuffer.put(value, 11);
+    }
+
+    // 单个字符6bit
+    if (this.data.length % 2) {
+      bitBuffer.put(AlphanumericData.ALPHA_NUM_CHARS.indexOf(this.data[i], 6));
+    }
   }
 }
 
@@ -228,8 +300,11 @@ class ByteData extends Data {
   static getBitsLength(len) {
     return len * 8;
   }
-  write() {
-
+  write(bitBuffer) {
+    let l = this.data.length;
+    for (let i = 0; i < l; i++) {
+      bitBuffer.put(this.data[i], 8);
+    }
   }
 }
 
@@ -429,7 +504,8 @@ class Segments {
           // 前后节点类型相同 例如www(BYTE) => .(BYTE)
           if (table[prevNodeId] && table[prevNodeId].node.mode === node.mode) {
             // 类型相同 只需要计算合并后的数据与单个数据的bit差值
-            graph[prevNodeId][key] = this.getSegmentBitsLength(table[prevNodeId].lastCount + node.length, node.mode) - this.getSegmentBitsLength(table[prevNodeId].lastCount, node.mode);
+            graph[prevNodeId][key] = this.getSegmentBitsLength(table[prevNodeId].lastCount + node.length, node.mode)
+              - this.getSegmentBitsLength(table[prevNodeId].lastCount, node.mode);
             // 这个不知道有什么意义
             table[prevNodeId].lastCount += node.length;
           }
@@ -498,9 +574,9 @@ class Segments {
           let oldValue = dp[pos[0]][pos[1]];
           let newValue = dp[i][j] + iterator[pos];
           if (newValue < oldValue) {
-            result[i + 1] = key;
+            result[i] = key;
             dp[pos[0]][pos[1]] = newValue;
-          } 
+          }
         });
       }
     }
@@ -509,8 +585,15 @@ class Segments {
   // 合并同类型的相邻数据分片
   mergeSegments(segs) {
     return segs.reduce((acc, seg) => {
-
-    });
+      let len = acc.length;
+      let prevSeg = len ? acc[len - 1] : null;
+      if (prevSeg && prevSeg.mode === seg.mode) {
+        acc[len - 1].data += seg.data;
+        return acc;
+      }
+      acc.push(seg);
+      return acc;
+    }, []);
   }
   // 返回优化后的数据分片
   fromString(version) {
@@ -521,7 +604,6 @@ class Segments {
     for (let i = 0; i < path.length; i++) {
       optimizedSegs.push(graph.table[path[i]].node);
     }
-    console.log(optimizedSegs);
     return this.fromArray(this.mergeSegments(optimizedSegs));
   }
 }
@@ -530,6 +612,23 @@ class Segments {
  * 主类
  */
 class QRcode {
+  // 返回codewords
+  static createData(version, errorCorrectionLevel, segments) {
+    let buffer = new BitBuffer();
+
+    segments.forEach((data) => {
+      // 4bit存类型 => Numeric,Alphanumeric,Byte,Kanji
+      buffer.put(data.mode.bit, 4);
+
+      // 根据ccbit存长度
+      buffer.push(data.getLength(), Mode.getCharCountIndicator(data.mode, version));
+
+      // 数据本身
+      data.write(buffer);
+    });
+
+    // return createCodewords(buffer, version, errorCorrectionLevel);
+  }
   static createSymbol(data, errorCorrectionLevel) {
     let segments = null;
     // 暂时不处理Array类型的data
@@ -543,7 +642,7 @@ class QRcode {
     }
     // 根据优化的segments再确定一次version
     let bestVersion = Version.getBestVersionForData(segments, errorCorrectionLevel);
-
+    let dataBits = QRcode.createData(bestVersion, errorCorrectionLevel, segments);
   }
 }
 
