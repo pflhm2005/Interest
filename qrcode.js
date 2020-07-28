@@ -38,6 +38,7 @@ class Mode {
  * 工具类
  */
 class Utils {
+  static FINDER_PATTERN_SIZE = 7;
   static CODEWORDS_COUNT = [
     0, // Not used
     26, 44, 70, 100, 134, 172, 196, 242, 292, 346,
@@ -47,6 +48,20 @@ class Utils {
   ];
   static getSymbolTotalCodewords(version) {
     return Utils.CODEWORDS_COUNT[version];
+  }
+  static getSymbolSize(version) {
+    return version * 4 + 17;
+  }
+  static getPosition(version) {
+    let size = Utils.getSymbolSize(version);
+    return [
+      // top-left
+      [0, 0],
+      // top-rigth
+      [size - Utils.FINDER_PATTERN_SIZE, 0],
+      // bottom-left
+      [0, size - Utils.FINDER_PATTERN_SIZE]
+    ];
   }
   static getSegments(regex, mode, str) {
     let segments = [];
@@ -147,6 +162,32 @@ class BitBuffer {
       this.buffer[bufIndex] |= (0x80 >>> (this.length % 8));
     }
     this.length++
+  }
+}
+
+/**
+ * 矩阵类
+ * 也就普普通通一维数组
+ */
+class BitMatrix {
+  constructor(size) {
+    this.size = size;
+    this.data = Utils.BufferAlloc(size * size);
+    this.reservedBit = Utils.BufferAlloc(size * size);
+  }
+  set(row, col, value, reserved) {
+    let index = row * this.size + col;
+    this.data[index] = value;
+    if (reserved) this.reservedBit[index] = true;
+  }
+  get(row, col) {
+    return this.data[row * this.size + col];
+  }
+  xor(row, col, value) {
+    this.data[row * this.size + col] ^= value;
+  }
+  isReserved(row, col) {
+    return this.reservedBit[row * this.size + col];
   }
 }
 
@@ -707,7 +748,11 @@ class Segments {
   }
 }
 
-class ReedSolomonEncoder { }
+class ReedSolomonEncoder {
+  encode() {
+    return 0;
+  }
+}
 
 /**
  * 主类
@@ -717,7 +762,7 @@ class QRcode {
    * 使用Reed-Solomon编码字符
    * 这个方法看不懂啊!!!
    */
-  static createCodewords(bitBuffer, version, errorCorrectionLevel) {
+  createCodewords(bitBuffer, version, errorCorrectionLevel) {
     /**
      * 计算每个group包含block的数
      * @var totalCodewords codewords总数
@@ -761,13 +806,15 @@ class QRcode {
     let offset = 0;
     let dcData = new Array(ecTotalBlocks);
     let ecData = new Array(ecTotalBlocks);
+    // 这玩意是个憨憨
     let maxDataSize = 0;
-    // 转为十六进制的buffer数组
+    // 简单讲就是转为十六进制的buffer数组
     let buffer = Utils.BufferFrom(bitBuffer.buffer);
 
     /**
-     * ecTotalBlocks = blocksInGroup1 + blocksInGroup2
-     * dataCodewordsInGroup1 = (dataTotalCodewords / ecTotalBlocks) | 0
+     * ecTotalBlocks = blocksInGroup1 + blocksInGroup2 => 1
+     * dataCodewordsInGroup1 = (dataTotalCodewords / ecTotalBlocks) | 0 => 28
+     * 本例中根本用不到2
      */
     for (let b = 0; b < ecTotalBlocks; b++) {
       let dataSize = b < blocksInGroup1 ? dataCodewordsInGroup1 : dataCodewordsInGroup2;
@@ -778,27 +825,33 @@ class QRcode {
       maxDataSize = Math.max(maxDataSize, dataSize);
     }
 
-    // 将data和error correction交错
+    /**
+     * Create final data
+     * 前面是处理了Data 这里将data与error结合
+     * 前面的关键步骤看不懂 呜呜呜
+     */
     let data = Utils.BufferAlloc(totalCodewords);
     let index = 0;
+    // 这个循环遍历dcData并将值弄进data数组中
     for (let i = 0; i < maxDataSize; i++) {
       for (let j = 0; j < ecTotalBlocks; j++) {
-        if (i < dcData[r].length) {
-          data[index++] = dcData[r][i];
+        if (i < dcData[j].length) {
+          data[index++] = dcData[j][i];
         }
       }
     }
 
+    // 这个循环就是把ecData搞进data里
     for (let i = 0; i < ecCount; i++) {
       for (let j = 0; j < ecTotalBlocks; j++) {
-        data[index++] = ecData[r][i];
+        data[index++] = ecData[j][i];
       }
     }
 
     return data;
   }
   // 将数据整合到一个buffer数组中
-  static createData(version, errorCorrectionLevel, segments) {
+  createData(version, errorCorrectionLevel, segments) {
     let buffer = new BitBuffer();
     segments.forEach((data) => {
       // 4bit存类型
@@ -832,9 +885,9 @@ class QRcode {
       buffer.put(i % 2 ? 0x11 : 0xc, 8);
     }
 
-    return QRcode.createCodewords(buffer, version, errorCorrectionLevel);
+    return this.createCodewords(buffer, version, errorCorrectionLevel);
   }
-  static createSymbol(data, errorCorrectionLevel) {
+  createSymbol(data, errorCorrectionLevel, maskPattern) {
     let segments = null;
     // 暂时不处理Array类型的data
     {
@@ -846,10 +899,119 @@ class QRcode {
       segments = Seg.fromString(estimatedVersion || 40);
     }
     // 根据优化的segments再确定一次version
-    let bestVersion = Version.getBestVersionForData(segments, errorCorrectionLevel);
-    let dataBits = QRcode.createData(bestVersion, errorCorrectionLevel, segments);
+    let version = Version.getBestVersionForData(segments, errorCorrectionLevel);
+    // 返回data与error混合的buffer数组
+    let dataBits = this.createData(version, errorCorrectionLevel, segments);
+
+    /**
+     * 开始生成二维码矩阵模型
+     * 矩阵大小为version * 4 + 17
+     */
+    let moduleCount = Utils.getSymbolSize(version);
+    let modules = new BitMatrix(moduleCount);
+
+    /**
+     * 添加函数模块(?英文就这么写的 反正函数名说明一切)
+     * 这部分内容与data无关
+     */
+    // 画左上、右上、左下的正方形
+    this.setupFinderPattern(modules, version);
+    this.setupTimingPattern(modules);
+    this.setupAlignmentPattern(modules, version);
+
+    this.setupFormatInfo(modules, errorCorrectionLevel, 0);
+    if (version >= 7) {
+      this.setupVersionInfo(modules, version);
+    }
+
+    this.setupData(modules, dataBits);
+
+    if (isNaN(maskPattern)) {
+      maskPattern = MaskPattern.getBestMask(modules, this.setupFormatInfo.bind(null, modules, errorCorrectionLevel));
+    }
+
+    MaskPattern.applyMask(maskPattern, modules);
+
+    this.setupFormatInfo(modules, errorCorrectionLevel, maskPattern);
+    return { modules, version, errorCorrectionLevel, maskPattern, segments };
+  }
+  setupFinderPattern(matrix, version) {
+    /**
+     * 花里胡哨一套套
+     * @param size 矩阵尺寸
+     * @param pos 偏移数组
+     */
+    let size = matrix.size;
+    let pos = Utils.getPosition(version);
+
+    for (let i = 0; i < pos.length; i++) {
+      // 第一轮总是0
+      let row = pos[i][0];
+      let col = pos[i][1];
+
+      // -1有个鸡儿用?
+      for (let r = -1; r <= 7; r++) {
+        let R = row + r;
+        let C = col + c;
+        // 越界检测
+        if (R <= -1 || R >= size) continue;
+        for (let c = -1; c <= 7; c++) {
+          if (C <= -1 || C >= size) continue;
+          /**
+           * 这个地方可以枚举
+           * 已知[r, c]范围是[-1, 7] 则满足条件的所有[r, c]组合如下
+           * [0 ~ 6, 0], [0 ~ 6, 6]
+           * [0, 0 ~ 6], [6, 0 ~ 6]
+           * [2 ~ 4, 2 ~ 4]
+           * 若无视pos 在7 * 7的矩阵图如下
+           * 
+           *       * * * * * * * 
+           *       *           * 
+           *       *   * * *   * 
+           *       *   * * *   * 
+           *       *   * * *   * 
+           *       *           * 
+           *       * * * * * * * 
+           * 
+           * 就是二维码左上右上左下那个正方形
+           */
+          if ((r >= 0 && r <= 6 && (c === 0 || c === 6)) ||
+            (c >= 0 && c <= 6 && (r === 0 || r === 6)) ||
+            (r >= 2 && r <= 4 && c >= 2 && c <= 4)) {
+            matrix.set(R, C, true, true);
+          } else {
+            matrix.set(R, C, false, true);
+          }
+        }
+      }
+    }
+  }
+  setupTimingPattern(matrix) {
+    let size = matrix.size;
+    /**
+     * 以version2为例 size => 25
+     * [8 ~ 16的偶数, 6], [6, 8 ~ 16的偶数]
+     * 图形如下
+     *     左上角                           右上角
+     *     *           *                   *           *
+     *     * * * * * * *   *   *   *   *   * * * * * * *
+     *                 
+     *                 *
+     *                 ...
+     * 
+     *                 *
+     * 
+     *     * * * * * * *
+     *     左下角
+     */
+    for (let r = 8; r < size - 8; r++) {
+      // 偶数为true
+      let value = r % 2 === 0;
+      matrix.set(r, 6, value, true);
+      matrix.set(6, r, value, true);
+    }
   }
 }
 
 let str = 'www.baI123du.com';
-QRcode.createSymbol(str, ECLevel.M);
+new QRcode().createSymbol(str, ECLevel.M);
