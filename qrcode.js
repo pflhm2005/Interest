@@ -713,36 +713,62 @@ class ReedSolomonEncoder { }
  * 主类
  */
 class QRcode {
-  // 使用Reed-Solomon编码字符
+  /**
+   * 使用Reed-Solomon编码字符
+   * 这个方法看不懂啊!!!
+   */
   static createCodewords(bitBuffer, version, errorCorrectionLevel) {
-    // 又来一次
+    /**
+     * 计算每个group包含block的数
+     * @var totalCodewords codewords总数
+     * @var ecTotalBlocks 映射的block数
+     * @var blocksInGroup2 除不尽的block
+     * @var blocksInGroup1 主block数
+     * @var totalCodewordsInGroup1 主block的codewords数量
+     * @example 以version => 2,errorCorrectionLevel => M为例
+     * totalCodewords => 44
+     * ecTotalCodewords => 16
+     * dataTotalCodewords => 44 - 16 => 28
+     * ecTotalBlocks => 1
+     * @result
+     * blocksInGroup2 => 0
+     * blocksInGroup1 => 1
+     * totalCodewordsInGroup1 => 44
+     * dataCodewordsInGroup1 => 28
+     * dataCodewordsInGroup2 => 29
+     * ecCount => 16
+     */
     let totalCodewords = Utils.getSymbolTotalCodewords(version);
     let ecTotalCodewords = ECCode.getTotalCodewordsCount(version, errorCorrectionLevel);
     let dataTotalCodewords = totalCodewords - ecTotalCodewords;
 
-    // 计算block数
     let ecTotalBlocks = ECCode.getBlocksCount(version, errorCorrectionLevel);
 
-    // 计算每个group包含block的数
     let blocksInGroup2 = totalCodewords % ecTotalBlocks;
     let blocksInGroup1 = ecTotalBlocks - blocksInGroup2;
 
     let totalCodewordsInGroup1 = Math.floor(totalCodewords / ecTotalBlocks);
 
     let dataCodewordsInGroup1 = Math.floor(dataTotalCodewords / ecTotalBlocks);
+    // ???
     let dataCodewordsInGroup2 = dataCodewordsInGroup1 + 1;
 
+    // 纠错code数量
     let ecCount = totalCodewordsInGroup1 - dataCodewordsInGroup1;
-
+    // ???
     let rs = new ReedSolomonEncoder(ecCount);
 
     let offset = 0;
     let dcData = new Array(ecTotalBlocks);
     let ecData = new Array(ecTotalBlocks);
     let maxDataSize = 0;
+    // 转为十六进制的buffer数组
     let buffer = Utils.BufferFrom(bitBuffer.buffer);
 
-    // 将buffer分派到不同的block中
+    /**
+     * ecTotalBlocks = blocksInGroup1 + blocksInGroup2
+     * dataCodewordsInGroup1 = (dataTotalCodewords / ecTotalBlocks) | 0
+     */
     for (let b = 0; b < ecTotalBlocks; b++) {
       let dataSize = b < blocksInGroup1 ? dataCodewordsInGroup1 : dataCodewordsInGroup2;
       dcData[b] = buffer.slice(offset, offset + dataSize);
