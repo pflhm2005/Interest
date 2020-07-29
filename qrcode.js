@@ -52,7 +52,7 @@ class Utils {
   static getSymbolSize(version) {
     return version * 4 + 17;
   }
-  static getPosition(version) {
+  static getFinderPatternPosition(version) {
     let size = Utils.getSymbolSize(version);
     return [
       // top-left
@@ -62,6 +62,62 @@ class Utils {
       // bottom-left
       [0, size - Utils.FINDER_PATTERN_SIZE]
     ];
+  }
+  static getRowColCoors(version) {
+    if (version === 1) return [];
+
+    /**
+     * 映射关系如下 [version, posCount]
+     * 2 ~ 6 => 2
+     * 7 ~ 13 => 3
+     * 14 ~ 20 => 4
+     * 21 ~ 27 => 5
+     * 28 ~ 34 => 6
+     * 35 ~ 40 => 7
+     */
+    let posCount = Math.floor(version / 7) + 2;
+    let size = Utils.getSymbolSize(version);
+    /**
+     * version32 => 32 * 4 + 17 = 145
+     * 这里可以直接代入公式得出
+     * intervals => Math.ceil((version * 4 + 4) / (2 * Math.floor(version / 7) + 2)) * 2
+     * 映射表如下
+     * [12, 16, 20, 24, 28] 2 ~ 6
+     * [16, 18, 20, 22, 24, 26, 28] 7 ~ 13
+     * [20, 22, 24, 24, 26, 28, 28] 14 ~ 20
+     * [22, 24, 24, 26, 26, 28, 28] 21 ~ 27
+     * [24, 24, 26, 26, 26(特殊情况), 28, 28] 28 ~ 34
+     * [24, 26, 26, 26, 28, 28] 35 ~ 40
+     */
+    let intervals = size === 145 ? 26 : Math.ceil((size - 13) / (2 * posCount - 2)) * 2;
+    let positions = [size - 7];
+    // version2 ~ 6时不会进人这个循环 前面可以提前返回
+    for (let i = 1; i < posCount - 1; i++) {
+      positions[i] = positions[i - 1] - intervals;
+    }
+    // 固定的pos
+    positions.push(6);
+    // [6, ..., size - 7]
+    return positions.reverse();
+  }
+  static getAlignmentPatternPosition(version) {
+    let coords = [];
+    let pos = Utils.getRowColCoors(version);
+    let l = pos.length;
+
+    for (let i = 0; i < l; i++) {
+      for (let j = 0; j < l; j++) {
+        // [6, 6], [6, size - 7], [size - 7, 6]都被FinderPattern占用了 跳过
+        if ((i === 0 && j === 0) ||
+          (i === 0 && j === l - 1) ||
+          (i === l - 1 && j === 0)) {
+          continue;
+        }
+        coords.push(pos[i], pos[j]);
+      }
+    }
+
+    return coords;
   }
   static getSegments(regex, mode, str) {
     let segments = [];
@@ -914,7 +970,6 @@ class QRcode {
      * 添加函数模块(?英文就这么写的 反正函数名说明一切)
      * 这部分内容与data无关
      */
-    // 画左上、右上、左下的正方形
     this.setupFinderPattern(modules, version);
     this.setupTimingPattern(modules);
     this.setupAlignmentPattern(modules, version);
@@ -935,6 +990,23 @@ class QRcode {
     this.setupFormatInfo(modules, errorCorrectionLevel, maskPattern);
     return { modules, version, errorCorrectionLevel, maskPattern, segments };
   }
+  /**
+   * 已知[r, c]范围是[-1, 7] 则满足条件的所有[r, c]组合如下
+   * [0 ~ 6, 0], [0 ~ 6, 6]
+   * [0, 0 ~ 6], [6, 0 ~ 6]
+   * [2 ~ 4, 2 ~ 4]
+   * 若无视pos 在7 * 7的矩阵图如下
+   * 
+   *       * * * * * * * 
+   *       *           * 
+   *       *   * * *   * 
+   *       *   * * *   * 
+   *       *   * * *   * 
+   *       *           * 
+   *       * * * * * * * 
+   * 
+   * 就是二维码左上右上左下那个正方形
+   */
   setupFinderPattern(matrix, version) {
     /**
      * 花里胡哨一套套
@@ -942,7 +1014,7 @@ class QRcode {
      * @param pos 偏移数组
      */
     let size = matrix.size;
-    let pos = Utils.getPosition(version);
+    let pos = Utils.getFinderPatternPosition(version);
 
     for (let i = 0; i < pos.length; i++) {
       // 第一轮总是0
@@ -957,24 +1029,6 @@ class QRcode {
         if (R <= -1 || R >= size) continue;
         for (let c = -1; c <= 7; c++) {
           if (C <= -1 || C >= size) continue;
-          /**
-           * 这个地方可以枚举
-           * 已知[r, c]范围是[-1, 7] 则满足条件的所有[r, c]组合如下
-           * [0 ~ 6, 0], [0 ~ 6, 6]
-           * [0, 0 ~ 6], [6, 0 ~ 6]
-           * [2 ~ 4, 2 ~ 4]
-           * 若无视pos 在7 * 7的矩阵图如下
-           * 
-           *       * * * * * * * 
-           *       *           * 
-           *       *   * * *   * 
-           *       *   * * *   * 
-           *       *   * * *   * 
-           *       *           * 
-           *       * * * * * * * 
-           * 
-           * 就是二维码左上右上左下那个正方形
-           */
           if ((r >= 0 && r <= 6 && (c === 0 || c === 6)) ||
             (c >= 0 && c <= 6 && (r === 0 || r === 6)) ||
             (r >= 2 && r <= 4 && c >= 2 && c <= 4)) {
@@ -986,29 +1040,72 @@ class QRcode {
       }
     }
   }
+  /**
+   * 以version2为例 size => 25
+   * [8 ~ 16的偶数, 6], [6, 8 ~ 16的偶数]
+   * 图形如下
+   *     左上角                           右上角
+   *     *           *                       *           *
+   *     * * * * * * *   *   *  ...  *   *   * * * * * * *
+   *                 
+   *                 *
+   *                 ...
+   * 
+   *                 *
+   * 
+   *     * * * * * * *
+   *     *           *
+   *     左下角
+   */
   setupTimingPattern(matrix) {
     let size = matrix.size;
-    /**
-     * 以version2为例 size => 25
-     * [8 ~ 16的偶数, 6], [6, 8 ~ 16的偶数]
-     * 图形如下
-     *     左上角                           右上角
-     *     *           *                   *           *
-     *     * * * * * * *   *   *   *   *   * * * * * * *
-     *                 
-     *                 *
-     *                 ...
-     * 
-     *                 *
-     * 
-     *     * * * * * * *
-     *     左下角
-     */
     for (let r = 8; r < size - 8; r++) {
       // 偶数为true
       let value = r % 2 === 0;
       matrix.set(r, 6, value, true);
       matrix.set(6, r, value, true);
+    }
+  }
+  /**
+   * 这里也是可以枚举的 满足条件的[r, c]如下
+   * [-2, -2 ~ 2]
+   * [-1, -2], [-1, 2]
+   * [0, -2], [0, 0], [0, 2]
+   * [1, -2], [1, 2]
+   * [2. -2 ~ 2]
+   * 低version情况返回的pos为[size - 7, size -7]
+   * 可以看出这个作用在右下角 中心点为pos 图形如下
+   * 
+   *           * * * * *
+   *           *       *
+   *           *   *   *
+   *           *       *
+   *           * * * * *
+   * 
+   * 即以不同的pos为中心 生成一系列小正方形
+   */
+  setupAlignmentPattern(matrix, version) {
+    /**
+     * version1 返回空
+     * version2 ~ 6 返回[size - 7, size - 7]
+     * 以及其他更复杂返回
+     */
+    let pos = Utils.getAlignmentPatternPosition(version);
+
+    for (let i = 0; i < pos.length; i++) {
+      let row = pos[i][0];
+      let col = pos[i][1];
+
+      for (let r = -2; r <= 2; r++) {
+        for (let c = -2; c <= 2; c++) {
+          if (r === -2 || r === 2 || c === -2 || c === 2 ||
+            (r === 0 && c === 0)) {
+            matrix.set(row + r, col + c, true, true);
+          } else {
+            matrix.set(row + r, col + c, false, true);
+          }
+        }
+      }
     }
   }
 }
