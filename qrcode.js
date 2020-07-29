@@ -119,6 +119,41 @@ class Utils {
 
     return coords;
   }
+  /**
+   * Encode data with Bose-Chaudhuri-Hocquenghem
+   * 狗屁encode 就是返回数字的二进制位数
+   * @param  {Number} data Value to encode
+   * @return {Number}      Encoded value
+   */
+  static getBCHDigit(data) {
+    let digit = 0;
+    while (data !== 0) {
+      digit++;
+      data >>>= 1;
+    }
+
+    return digit;
+  }
+  /**
+   * 返回15bits的内容 包含5bits数据以及10bits错误修正数据
+   * @param {ECLevel} errorCorrectionLevel 
+   * @param {Number} mask 格式化时为0
+   */
+  static getEncodedBits(errorCorrectionLevel, mask) {
+    const G15 = (1 << 10) | (1 << 8) | (1 << 5) | (1 << 4) | (1 << 2) | (1 << 1) | (1 << 0);
+    const G15_MASK = (1 << 14) | (1 << 12) | (1 << 10) | (1 << 4) | (1 << 1);
+    // 11
+    const G15_BCH = Utils.getBCHDigit(G15);
+    // LMQH => 1032
+    let data = ((errorCorrectionLevel.bit << 3) | mask);
+    let d = data << 10;
+    while (Utils.getBCHDigit(d) - G15_BCH >= 0) {
+      d ^= (G15 << (Utils.getBCHDigit(d) - G15_BCH));
+    }
+
+    return ((data << 10) | d) ^ G15_MASK;
+  }
+
   static getSegments(regex, mode, str) {
     let segments = [];
     let result = null;
@@ -968,12 +1003,13 @@ class QRcode {
 
     /**
      * 添加函数模块(?英文就这么写的 反正函数名说明一切)
-     * 这部分内容与data无关
+     * 这部分内容与data无关 有详细注释
      */
     this.setupFinderPattern(modules, version);
     this.setupTimingPattern(modules);
     this.setupAlignmentPattern(modules, version);
 
+    // 注释写着这里是预先格式化某些区域 防止被mask污染
     this.setupFormatInfo(modules, errorCorrectionLevel, 0);
     if (version >= 7) {
       this.setupVersionInfo(modules, version);
@@ -1104,6 +1140,113 @@ class QRcode {
           } else {
             matrix.set(row + r, col + c, false, true);
           }
+        }
+      }
+    }
+  }
+  /**
+   * 添加版本信息
+   * 影响8行8列的值
+   */
+  setupFormatInfo(matrix, errorCorrectionLevel, maskPattern) {
+    let size = matrix.size;
+    // maskPattern为0时返回G15_MASK
+    // 1 << (1,4,10,12,14)
+    let bits = Utils.getEncodedBits(errorCorrectionLevel, maskPattern);
+
+    let mod = null;
+    /**
+     * 可枚举 循环中命中的坐标为
+     * [0 ~ 5, 8], [7, 8], [8, 8], [size - 7 ~ size - 1, 8]
+     * [8, 0 ~ 5], [8, 7], [8, size - 8 ~ size - 1]
+     */
+    for (let i = 0; i < 15; i++) {
+      mod = ((bits >> i) & 1) === 1;
+      // vertical
+      if (i < 6) {
+        matrix.set(i, 8, mod, true);
+      } else if (i < 8) {
+        matrix.set(i + 1, 8, mid, true);
+      } else {
+        matrix.set(size - 15 + i, 8, mod, true);
+      }
+
+      // horizontal
+      if (i < 8) {
+        matrix.set(8, size - i - 1, mod, true);
+      } else if (i < 9) {
+        matrix.set(8, 15 - i - 1 + 1, mod, true);
+      } else {
+        matrix.set(8, 15 - i - 1, mod, true);
+      }
+    }
+
+    matrix.set(size - 8, 8, 1, true);
+  }
+  setupVersionInfo() { }
+  /**
+   * 数据接入
+   * @param matrix 矩阵
+   * @param data 数据Buffer数组
+   * 结构 => (数据类型 + 数据长度 + 数据内容) * n + 结束符号 + ReedSolomonEncode后的数据
+   */
+  setupData(matrix, data) {
+    let size = matrix.size;
+    let inc = -1;
+    let row = size - 1;
+    let bitIndex = 7;
+    let byteIndex = 0;
+    /**
+     * 数据的注入是右下角开始的 [size - 1, size -1]
+     * 以version2为例 矩阵大小为25 * 25
+     * 以[24, 24] => [24, 23] => [23, 24] => [23, 23]依次注入数据
+     * 即
+     *    9 (保留区域)
+     *    8     7
+     *    6     5
+     *    4     3
+     *    2     1(右下角)
+     * 当遇到保留区域会跳过
+     * 当某两列注入完毕后
+     *  12   11   10  9(到达顶部)
+     *  14   13   8   7
+     * 数据注入流动如上所示
+     */
+    for (let col = size - 1; col > 0; col -= 2) {
+      if (col === 6) col--;
+      // while中的col不变
+      while (true) {
+        for (let c = 0; c < 2; c++) {
+          /**
+           * 只有非保留区域才设值
+           * 这块逻辑比较简单 就是依次从buffer取值
+           */
+          if (!matrix.isReserved(row, col - c)) {
+            let dark = false;
+
+            if (byteIndex < data.length) {
+              dark = (((data[byteIndex] >>> bitIndex) & 1) === 1);
+            }
+
+            matrix.set(row, col - c, dark);
+            bitIndex--;
+
+            if (bitIndex === -1) {
+              byteIndex++;
+              bitIndex = 7;
+            }
+          }
+        }
+
+        row += inc;
+        // 从下往上会走row < 0 反正走size <= row
+        // 贪食蛇的路线
+        if (row < 0 || size <= row) {
+          // 重置为0或24
+          row -= inc;
+          // 1或-1
+          inc = -inc;
+          break;
         }
       }
     }
