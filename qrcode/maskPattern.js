@@ -1,3 +1,5 @@
+const BitMatrix = require("./bitMatrix");
+
 module.exports = class MaskPattern {
   static Patterns = {
     PATTERN000: 0,
@@ -144,10 +146,24 @@ module.exports = class MaskPattern {
 
     return points * MaskPattern.PenaltyScores.N3;
   }
+  // 计算黑点比例 不晓得计算的是个啥
   static getPenaltyN4(data) {
     let darkCount = 0;
     let modulesCount = data.data.length;
+
+    for (let i = 0; i < modulesCount; i++) {
+      darkCount += data.data[i];
+    }
+    let k = Math.abs(Math.ceil((darkCount * 100 / modulesCount) / 5) - 10);
+
+    return k * MaskPattern.PenaltyScores.N4;
   }
+  /**
+   * 计算掩码值
+   * @param {BitMatrix} data 
+   * @param {Function} setupFormatFunc
+   * @returns {Number}
+   */
   static getBestMask(data, setupFormatFunc) {
     let numPatterns = Object.keys(MaskPattern.Patterns).length;
     let bestPattern = 0;

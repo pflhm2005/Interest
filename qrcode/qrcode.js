@@ -54,7 +54,7 @@ class QRcode {
 
     // 纠错code数量
     let ecCount = totalCodewordsInGroup1 - dataCodewordsInGroup1;
-    // ???
+    // 根本看不懂这是啥
     let rs = new ReedSolomonEncoder(ecCount);
 
     let offset = 0;
@@ -175,16 +175,19 @@ class QRcode {
 
     // 注释写着这里是预先格式化某些区域 防止被mask污染
     this.setupFormatInfo(modules, errorCorrectionLevel, 0);
+
     if (version >= 7) {
       this.setupVersionInfo(modules, version);
     }
 
+    // 写数据
     this.setupData(modules, dataBits);
 
     if (isNaN(maskPattern)) {
       maskPattern = MaskPattern.getBestMask(modules, this.setupFormatInfo.bind(null, modules, errorCorrectionLevel));
     }
 
+    // 掩码
     MaskPattern.applyMask(maskPattern, modules);
 
     this.setupFormatInfo(modules, errorCorrectionLevel, maskPattern);
