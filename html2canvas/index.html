@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+<script src="./html2canvas.js"></script>
+<body>
+  <p id="app">12345</p>
+  <input type="password" id=input>
+</body>
+<script>
+  const p = document.getElementById('app');
+  html2canvas(p).then(r => {
+    let d = r.toDataURL();
+    let imgDom = new Image();
+    imgDom.src = d;
+    imgDom.onload = () => {
+      document.body.appendChild(imgDom);
+    };
+  });
+</script>
+</html>
