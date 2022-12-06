@@ -1,4 +1,4 @@
 # research
-研究一些原理的实现
+尝试实现V8的部分功能
 
-- 目前正在研究QRcode
+- Parser
