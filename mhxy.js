@@ -26,20 +26,22 @@ function go() {
         }
         return acc;
       }, []);
-      console.log(ar);
       if (ar.length) {
         const cmds = ar.map(v => `handle -c ${v.handle} -p ${v.pid} -y`);
         (async () => {
           for(const cmd of cmds) {
-            console.log('正在处理handle: ' + cmd + '...');
+            console.log('正在处理: ' + cmd + '...');
             await closeHandle(cmd);
           }
+          console.log('处理完毕\n');
         })();
         resolve('处理完毕');
       }
-      reject('未找到对应进程');
+      reject('未找到对应进程，请确认游戏正常打开');
     });
-  })
+  }).catch(e => {
+    console.log(e);
+  });
 }
 
 go();
