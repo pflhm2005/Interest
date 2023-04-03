@@ -1,7 +1,7 @@
 const sudo = require('sudo-prompt');
 
 async function closeHandle(cmd) {
-  return new Promise((resolve, reject) => {sudo.exec(cmd, (err) => {
+  return new Promise((resolve, reject) => {sudo.exec(cmd, { name: 'admin' }, (err) => {
       if (err) reject(err);
       resolve();
     });
@@ -10,7 +10,7 @@ async function closeHandle(cmd) {
 
 function go() {
   return new Promise((resolve, reject) => {
-    sudo.exec('handle -a -vt -p mhmain', function (err, stdout) {
+    sudo.exec('handle -a -vt -p mhmain', { name: 'admin' }, function (err, stdout) {
       if (err) reject(err);
       const ar = stdout.split('\n').filter(v => v).reduce((acc, cur) => {
         if (cur.includes('BaseNamedObjects\\mhxy')) {
