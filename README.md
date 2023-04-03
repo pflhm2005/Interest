@@ -3,9 +3,12 @@
 - 梦幻五开脚本
 
 依赖:  
-[handle](https://learn.microsoft.com/zh-cn/sysinternals/downloads/handle)  
-npm包 sudo-prompt
+[handle](https://learn.microsoft.com/zh-cn/sysinternals/downloads/handle)  设为环境变量
+设置环境变量 NVM_SYMLINK => node路径
 
-1. 打开梦幻窗口 开5个
-2. node环境下运行脚本
-3. 继续打开梦幻窗口开号
+1. git clone
+2. npm install
+3. 打开梦幻窗口 开5个
+4. 双击bat脚本
+5. 继续打开梦幻窗口开号
+6. 重复4-5过程 可以实现无限开游戏
