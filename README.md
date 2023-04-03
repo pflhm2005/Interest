@@ -3,8 +3,8 @@
 - 梦幻五开脚本
 
 依赖:  
-[handle](https://learn.microsoft.com/zh-cn/sysinternals/downloads/handle)  设为环境变量
-设置环境变量 NVM_SYMLINK => 本地node路径
+[handle](https://learn.microsoft.com/zh-cn/sysinternals/downloads/handle)  设为环境变量  
+设置环境变量 NVM_SYMLINK => 本地node路径  
 把bat脚本发送到桌面快捷方式
 
 1. git clone
