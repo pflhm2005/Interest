@@ -1,7 +1,7 @@
 const sudo = require('sudo-prompt');
 
 async function closeHandle(cmd) {
-  return new Promise((resolve, reject) => {sudo.exec(cmd, { name: 'admin' }, (err) => {
+  return new Promise((resolve, reject) => {sudo.exec(cmd,{ name: 'admin'}, (err) => {
       if (err) reject(err);
       resolve();
     });
@@ -10,10 +10,10 @@ async function closeHandle(cmd) {
 
 function go() {
   return new Promise((resolve, reject) => {
-    sudo.exec('handle -a -vt -p mhmain', { name: 'admin' }, function (err, stdout) {
+    sudo.exec('handle -a -vt -p mh', { name: 'admin'}, function (err, stdout) {
       if (err) reject(err);
       const ar = stdout.split('\n').filter(v => v).reduce((acc, cur) => {
-        if (cur.includes('BaseNamedObjects\\mhxy')) {
+        if (cur.includes('BaseNamedObjects\\mhxy') || cur.includes('BaseNamedObjects\\MHXY')) {
           const arr = cur.split(/\s+/);
           acc.push({
             process: arr[0],
@@ -26,20 +26,20 @@ function go() {
         }
         return acc;
       }, []);
+      console.log(ar);
       if (ar.length) {
-        const pid = ar[0].pid;
-        const cmds = ar.map(v => v.handle);
+        const cmds = ar.map(v => `handle -c ${v.handle} -p ${v.pid} -y`);
         (async () => {
           for(const cmd of cmds) {
-            console.log('正在处理handle' + cmd + '...');
-            await closeHandle(`handle -c ${cmd} -p ${pid} -y`);
+            console.log('正在处理handle: ' + cmd + '...');
+            await closeHandle(cmd);
           }
         })();
         resolve('处理完毕');
       }
       reject('未找到对应进程');
     });
-  });
+  })
 }
 
 go();
