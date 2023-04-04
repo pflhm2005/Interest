@@ -6,7 +6,7 @@
 
 依赖:  
 [handle](https://learn.microsoft.com/zh-cn/sysinternals/downloads/handle)  设为环境变量  
-node环境
+node环境  
 把bat脚本发送到桌面快捷方式
 
 1. git clone
