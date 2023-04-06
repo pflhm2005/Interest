@@ -2,10 +2,11 @@
 
 - 梦幻五开脚本
 
-已自实现windows下管理员模式运行指令
+已自实现windows下管理员模式运行指令插件  
+插件仅为自用 懒得写文档
 
 依赖:  
-[handle](https://learn.microsoft.com/zh-cn/sysinternals/downloads/handle)  设为环境变量  
+下载[handle](https://learn.microsoft.com/zh-cn/sysinternals/downloads/handle)  解压后设为环境变量  
 node环境  
 把bat脚本发送到桌面快捷方式
 

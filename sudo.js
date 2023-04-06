@@ -3,6 +3,8 @@ const fs = require('fs');
 const child_process = require('child_process');
 const tmpDir = require('os').tmpdir();
 
+const CHECKSTATUS_TIMEINTERVAL = 500;
+
 class Exec {
   constructor() {
     this.fileNames = ['cmd.bat', 'exec.bat', 'out', 'err', 'stat'];
@@ -23,15 +25,15 @@ class Exec {
     fs.mkdirSync(this.dirPath);
 
     const execCmds = [
-      'call "' + this.cmdP + '" > "' + this.outP + '" 2> "' + this.errP + '"',
-      '(echo %ERRORLEVEL%) > "' + this.statP + '"'
+      `call "${this.cmdP} > ${this.outP} 2> ${this.errP}`,
+      `(echo %ERRORLEVEL%) > ${this.statP}`
     ].join('\r\n');
     fs.writeFileSync(this.execP, execCmds);
   }
   checkStatus(cb) {
     fs.stat(this.statP, (err, stat) => {
       if ((err && err.code === 'ENOENT') || stat.size < 2) {
-        setTimeout(() => this.checkStatus(cb), 1000);
+        setTimeout(() => this.checkStatus(cb), CHECKSTATUS_TIMEINTERVAL);
       } else if (err) {
         throw new Error(err);
       } else {
