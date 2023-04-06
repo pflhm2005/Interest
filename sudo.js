@@ -3,7 +3,7 @@ const fs = require('fs');
 const child_process = require('child_process');
 const tmpDir = require('os').tmpdir();
 
-const CHECKSTATUS_TIMEINTERVAL = 500;
+const CHECKSTATUS_TIMEINTERVAL = 800;
 
 class Exec {
   constructor() {
