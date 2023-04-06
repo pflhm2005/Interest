@@ -25,8 +25,8 @@ class Exec {
     fs.mkdirSync(this.dirPath);
 
     const execCmds = [
-      `call "${this.cmdP} > ${this.outP} 2> ${this.errP}`,
-      `(echo %ERRORLEVEL%) > ${this.statP}`
+      `call "${this.cmdP}" > "${this.outP}" 2> "${this.errP}"`,
+      `(echo %ERRORLEVEL%) > "${this.statP}"`
     ].join('\r\n');
     fs.writeFileSync(this.execP, execCmds);
   }
