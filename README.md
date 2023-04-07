@@ -6,8 +6,8 @@
 插件仅为自用 懒得写文档
 
 依赖:  
-下载[handle](https://learn.microsoft.com/zh-cn/sysinternals/downloads/handle)  解压后设为环境变量  
-node环境  
+下载[handle](https://learn.microsoft.com/zh-cn/sysinternals/downloads/handle)  设为环境变量  
+下载[node](https://nodejs.org/en) 设为环境变量  
 把bat脚本发送到桌面快捷方式
 
 1. git clone
