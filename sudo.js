@@ -3,7 +3,7 @@ const fs = require('fs');
 const child_process = require('child_process');
 const tmpDir = require('os').tmpdir();
 
-const CHECKSTATUS_TIMEINTERVAL = 500;
+const CHECKSTATUS_TIMEINTERVAL = 800;
 
 class Exec {
   constructor() {
@@ -25,8 +25,8 @@ class Exec {
     fs.mkdirSync(this.dirPath);
 
     const execCmds = [
-      `call "${this.cmdP} > ${this.outP} 2> ${this.errP}`,
-      `(echo %ERRORLEVEL%) > ${this.statP}`
+      `call "${this.cmdP}" > "${this.outP}" 2> "${this.errP}"`,
+      `(echo %ERRORLEVEL%) > "${this.statP}"`
     ].join('\r\n');
     fs.writeFileSync(this.execP, execCmds);
   }
