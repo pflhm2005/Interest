@@ -1,4 +1,4 @@
-const E = require('./sudo.js');
+const E = require('../sudo.js');
 
 function go() {
   E.exec('handle -a -vt -p mh').then(stdout => {
